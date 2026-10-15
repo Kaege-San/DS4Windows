@@ -98,8 +98,9 @@ jobs:
         run: |
           VERSION="$(date +%Y.%m.%d)-ci-${GITHUB_SHA::7}"
           PRODUCT_VERSION="$(python -c "import xml.etree.ElementTree as ET; print(ET.parse('DS4Windows/DS4WinWPF.csproj').find('.//AssemblyVersion').text)")"
-          BUNDLE_BASE="$(echo "$PRODUCT_VERSION" | awk -F. '{print $1"."$2"."$3}')"
-          BUNDLE_VERSION="${BUNDLE_BASE}-ci.${GITHUB_RUN_NUMBER}"
+          # Burn needs one increasing numeric order across CI and release bundles.
+          # Keep app/MSI ProductVersion unchanged; this is only the bundle identity.
+          BUNDLE_VERSION="$(python ./utils/installer-bundle-version.py --product-version "$PRODUCT_VERSION" --run-id "$GITHUB_RUN_ID")"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "PRODUCT_VERSION=$PRODUCT_VERSION" >> "$GITHUB_ENV"
           echo "BUNDLE_VERSION=$BUNDLE_VERSION" >> "$GITHUB_ENV"

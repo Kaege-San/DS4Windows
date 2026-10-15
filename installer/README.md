@@ -28,6 +28,12 @@ portable repair stays in the portable folder.
   -SkipApplicationPublish
 ```
 
+The example pins the Burn bundle version for a reproducible local composition.
+Hosted CI and release builds derive their Burn-only upgrade-order version with
+`utils/installer-bundle-version.py`; both workflows must use that shared
+scheme so a later release remains installable after a CI build, even when the
+MSI `ProductVersion` has not changed.
+
 Installer logs are written by Burn and by the elevated helpers. Process
 preflight diagnostics are stored in
 `%ProgramData%\DS4Windows\Installer\setup-actions.log`; VIIPER, USB-IP, startup

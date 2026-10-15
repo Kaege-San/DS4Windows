@@ -134,9 +134,11 @@ jobs:
           BINARY_VERSION=$PROJECT_ASSEMBLY_VERSION
           PACKAGE_VERSION=$PROJECT_VERSION
         fi
-        echo "Release: $VERSION; binary: $BINARY_VERSION; package: $PACKAGE_VERSION"
+        BUNDLE_VERSION=$(python ./utils/installer-bundle-version.py --product-version "$BINARY_VERSION" --run-id "$GITHUB_RUN_ID")
+        echo "Release: $VERSION; binary: $BINARY_VERSION; bundle: $BUNDLE_VERSION; package: $PACKAGE_VERSION"
         printf '%s\n' "VERSION=$VERSION" >> "$GITHUB_ENV"
         printf '%s\n' "BINARY_VERSION=$BINARY_VERSION" >> "$GITHUB_ENV"
+        printf '%s\n' "BUNDLE_VERSION=$BUNDLE_VERSION" >> "$GITHUB_ENV"
         printf '%s\n' "PACKAGE_VERSION=$PACKAGE_VERSION" >> "$GITHUB_ENV"
       shell: bash
     - name: Build X64
@@ -202,7 +204,7 @@ jobs:
         $parameters = @{
           PublishRoot = ".\bin\x64\Release\DS4Windows"
           ProductVersion = $env:BINARY_VERSION
-          BundleVersion = $env:BINARY_VERSION
+          BundleVersion = $env:BUNDLE_VERSION
           DisplayVersion = $env:VERSION
           OutputDirectory = ".\bin\x64\Release\installer"
           SkipApplicationPublish = $true
