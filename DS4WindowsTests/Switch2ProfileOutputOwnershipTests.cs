@@ -278,7 +278,7 @@ public sealed class Switch2ProfileOutputOwnershipTests
     [DataTestMethod]
     [DataRow(false)]
     [DataRow(true)]
-    public void UnprovenDetachCannotBecomeCleanBecauseLegacyArrayWasCleared(bool disconnectThrows)
+    public void UnprovenDetachRetainsLegacyOutputReferenceForExactRetry(bool disconnectThrows)
     {
         using var fixture = new Fixture();
         fixture.Attach();
@@ -287,7 +287,8 @@ public sealed class Switch2ProfileOutputOwnershipTests
             fixture.Initial.ThrowOnDisconnect = true;
             Assert.ThrowsException<IOException>(() =>
                 fixture.Service.UnplugOutDev(0, fixture.Device, force: true));
-            Assert.IsNull(fixture.Service.outputDevices[0]);
+            Assert.AreSame(fixture.Initial, fixture.Service.outputDevices[0],
+                "A failed output detach must retain its exact reference for cleanup retry.");
             fixture.Initial.ThrowOnDisconnect = false;
         }
         else
