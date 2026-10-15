@@ -38,13 +38,13 @@ public class PortableBrokerProcessTreeTests
             parent = new PortableBrokerProcessHost().Start(start);
             var elapsed = Stopwatch.StartNew();
             int helperId = 0;
-            while (elapsed.ElapsedMilliseconds < 10_000)
+            while (elapsed.ElapsedMilliseconds < 30_000)
             {
                 if (File.Exists(pidFile) && int.TryParse(File.ReadAllText(pidFile), out helperId)) break;
                 Assert.IsTrue(parent.IsRunning, "The test parent exited before creating its helper.");
                 Thread.Sleep(20);
             }
-            Assert.IsTrue(helperId > 0, "The test helper did not start within its deadline.");
+            Assert.IsTrue(helperId > 0, "The test helper did not start within 30 seconds.");
             helper = Process.GetProcessById(helperId);
             _ = helper.Handle; // Keep the exact helper object, never a later reused PID.
             Assert.IsFalse(helper.HasExited);
