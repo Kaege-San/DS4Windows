@@ -972,6 +972,7 @@ namespace DS4WinWPF.DS4Control.DTOXml
             {
                 SunshineControllerBridgeEnabled = source.deviceOptions.
                     SunshineControllerBridgeEnabled,
+                SunshineControllerBridgeEnabledSpecified = true,
                 DS4SupportSettings = new DS4SupportSettingsGroup()
                 {
                     Enabled = source.deviceOptions.DS4DeviceOpts.Enabled,
@@ -1159,6 +1160,13 @@ namespace DS4WinWPF.DS4Control.DTOXml
     {
         [XmlElement("SunshineControllerBridgeEnabled")]
         public bool SunshineControllerBridgeEnabled { get; set; }
+
+        // XmlSerializer otherwise makes an absent Boolean indistinguishable
+        // from an explicit false. Keep the presence bit so settings migration
+        // can restore values saved by a newer build before an older build
+        // rewrote Profiles.xml.
+        [XmlIgnore]
+        public bool SunshineControllerBridgeEnabledSpecified { get; set; }
 
         public DS4SupportSettingsGroup DS4SupportSettings
         {

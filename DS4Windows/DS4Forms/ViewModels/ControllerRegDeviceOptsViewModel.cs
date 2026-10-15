@@ -47,7 +47,19 @@ namespace DS4WinWPF.DS4Forms.ViewModels
         public bool SunshineControllerBridgeEnabled
         {
             get => serviceDeviceOpts.SunshineControllerBridgeEnabled;
-            set => serviceDeviceOpts.SunshineControllerBridgeEnabled = value;
+            set
+            {
+                if (serviceDeviceOpts.SunshineControllerBridgeEnabled == value)
+                    return;
+
+                serviceDeviceOpts.SunshineControllerBridgeEnabled = value;
+                if (!Global.Save())
+                {
+                    AppLogger.LogToGui(
+                        "The Sunshine bridge setting changed for this session but could not be saved.",
+                        false);
+                }
+            }
         }
 
         public DS4DeviceOptions DS4DeviceOpts { get => serviceDeviceOpts.DS4DeviceOpts; }

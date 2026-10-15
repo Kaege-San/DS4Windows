@@ -9415,6 +9415,7 @@ namespace DS4Windows
         public bool Load()
         {
             bool loaded = true;
+            bool migrateSunshineBridgeSetting = false;
             if (File.Exists(m_Profile))
             {
                 XmlSerializer serializer = new XmlSerializer(typeof(AppSettingsDTO));
@@ -9422,7 +9423,25 @@ namespace DS4Windows
                 try
                 {
                     AppSettingsDTO dto = serializer.Deserialize(sr) as AppSettingsDTO;
+                    bool? profileBridgeSetting =
+                        dto?.DeviceOptions?.SunshineControllerBridgeEnabledSpecified == true
+                            ? dto.DeviceOptions.SunshineControllerBridgeEnabled
+                            : null;
+                    bool? compatibilityBridgeSetting =
+                        AppSettingsCompatibilityStore.
+                            LoadSunshineControllerBridgeEnabled(m_Profile);
+
                     dto.MapTo(this);
+
+                    if (compatibilityBridgeSetting.HasValue)
+                    {
+                        deviceOptions.SunshineControllerBridgeEnabled =
+                            compatibilityBridgeSetting.Value;
+                    }
+
+                    migrateSunshineBridgeSetting = !profileBridgeSetting.HasValue ||
+                        (compatibilityBridgeSetting.HasValue &&
+                         compatibilityBridgeSetting != profileBridgeSetting);
 
                     PostProcessLoad();
                 }
@@ -9439,6 +9458,24 @@ namespace DS4Windows
 
             if (loaded)
             {
+                if (migrateSunshineBridgeSetting)
+                {
+                    if (!Save())
+                    {
+                        AppLogger.LogToGui(
+                            "Could not migrate the Sunshine bridge preference in Profiles.xml.",
+                            false);
+                    }
+                }
+                else if (!AppSettingsCompatibilityStore.
+                    SaveSunshineControllerBridgeEnabled(m_Profile,
+                        deviceOptions.SunshineControllerBridgeEnabled))
+                {
+                    AppLogger.LogToGui(
+                        "Could not preserve the Sunshine bridge preference for older DS4Windows builds.",
+                        false);
+                }
+
                 Global.PrepareAbsMonitorBounds(absDisplayEDID);
 
                 string custom_exe_name_path = Path.Combine(Global.exedirpath, Global.CUSTOM_EXE_CONFIG_FILENAME);
@@ -9830,6 +9867,16 @@ namespace DS4Windows
             catch (UnauthorizedAccessException)
             {
                 AppLogger.LogToGui("Unauthorized Access - Save failed to path: " + m_Profile, false);
+                saved = false;
+            }
+
+            if (!AppSettingsCompatibilityStore.
+                SaveSunshineControllerBridgeEnabled(m_Profile,
+                    deviceOptions.SunshineControllerBridgeEnabled))
+            {
+                AppLogger.LogToGui(
+                    "Could not preserve the Sunshine bridge preference for older DS4Windows builds.",
+                    false);
                 saved = false;
             }
 
