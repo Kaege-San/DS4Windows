@@ -2588,7 +2588,7 @@ namespace DS4Windows
                 throw new InvalidOperationException("Switch 2 output has no exact active manager binding; removal was rejected.");
             if (!useDInputOnly[index])
             {
-                bool preserveUncertainPermanentBinding = false;
+                bool outputCleanupCompleted = false;
                 try
                 {
                     //OutContType contType = Global.OutContType[index];
@@ -2602,10 +2602,10 @@ namespace DS4Windows
                         if ((slotDevice.CurrentAttachedStatus == OutSlotDevice.AttachedStatus.Attached &&
                             slotDevice.CurrentReserveStatus == OutSlotDevice.ReserveStatus.Dynamic) || force)
                         {
-                            outputDevices[index] = null;
-                            activeOutDevType[index] = OutContType.None;
-                            //slotDevice.CurrentInputBound = OutSlotDevice.InputBound.Unbound;
                             outputslotMan.DeferredRemoval(dev, index, outputDevices, immediate);
+                            if (outputslotMan.GetOutSlotDevice(dev) != null)
+                                throw new InvalidOperationException("The virtual output remains registered after removal.");
+                            outputCleanupCompleted = true;
                         }
                         else if (slotDevice.CurrentAttachedStatus == OutSlotDevice.AttachedStatus.Attached)
                         {
@@ -2613,18 +2613,24 @@ namespace DS4Windows
                             // old feedback cleanup finish. Another controller
                             // may reserve it only after the manager publishes
                             // the completed unbind under its existing lock.
-                            preserveUncertainPermanentBinding = true;
                             if (!outputslotMan.TryReleaseBoundOutput(dev, outputDevices, index))
                                 throw new InvalidOperationException("The permanent output binding changed before release.");
-                            preserveUncertainPermanentBinding = false;
+                            outputCleanupCompleted = true;
                         }
                         //dev.Disconnect();
                         //LogDebug(tempType + " Controller # " + (index + 1) + " unplugged");
                     }
+                    else
+                    {
+                        // The manager no longer owns this output. Clear only
+                        // the stale input-side reference; a live slot must stay
+                        // bound until its device disconnect has succeeded.
+                        outputCleanupCompleted = true;
+                    }
                 }
                 finally
                 {
-                    if (!preserveUncertainPermanentBinding)
+                    if (outputCleanupCompleted)
                     {
                         outputDevices[index] = null;
                         activeOutDevType[index] = OutContType.None;

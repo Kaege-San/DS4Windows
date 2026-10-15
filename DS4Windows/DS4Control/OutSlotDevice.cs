@@ -168,19 +168,37 @@ namespace DS4WinWPF.DS4Control
 
         public void DetachDevice()
         {
-            if (outputDevice != null)
-            {
-                outputDevice = null;
-                attachedStatus = AttachedStatus.UnAttached;
-                currentType = OutContType.None;
-                CurrentInputBound = InputBound.Unbound;
-                if (reserveStatus == ReserveStatus.Dynamic)
-                {
-                    PermanentType = OutContType.None;
-                }
+            if (outputDevice == null) return;
 
-                inputIndex = INPUT_INDEX_DEFAULT;
-                inputDisplayString = string.Empty;
+            // Commit the whole detached state before notifying bindings. A UI
+            // observer must not leave a half-detached slot if it throws while
+            // reacting to the property change.
+            outputDevice = null;
+            attachedStatus = AttachedStatus.UnAttached;
+            currentType = OutContType.None;
+            bool inputBindingChanged = inputBound != InputBound.Unbound;
+            inputBound = InputBound.Unbound;
+            bool permanentTypeChanged = reserveStatus == ReserveStatus.Dynamic &&
+                permanentType != OutContType.None;
+            if (permanentTypeChanged) permanentType = OutContType.None;
+            inputIndex = INPUT_INDEX_DEFAULT;
+            inputDisplayString = string.Empty;
+
+            if (inputBindingChanged)
+            {
+                try { CurrentInputBoundChanged?.Invoke(this, EventArgs.Empty); }
+                catch (Exception error)
+                {
+                    ControlService.StartupDiag($"OutSlotDevice input-binding observer failed for slot #{index + 1}: {error}");
+                }
+            }
+            if (permanentTypeChanged)
+            {
+                try { PermanentTypeChanged?.Invoke(this, EventArgs.Empty); }
+                catch (Exception error)
+                {
+                    ControlService.StartupDiag($"OutSlotDevice permanent-type observer failed for slot #{index + 1}: {error}");
+                }
             }
         }
 

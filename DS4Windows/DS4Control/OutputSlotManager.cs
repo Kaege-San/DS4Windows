@@ -44,6 +44,7 @@ namespace DS4Windows
         {
             get
             {
+                using ReadLocker locker = new ReadLocker(queueLocker);
                 int result = 0;
                 for (int i = 0; i < outputSlots.Length; i++)
                 {
@@ -120,8 +121,11 @@ namespace DS4Windows
                 ControlService.StartupDiag("OutputSlotManager.Stop timed out waiting for queued output task");
             }
 
-            deviceDict.Clear();
-            revDeviceDict.Clear();
+            using (WriteLocker locker = new WriteLocker(queueLocker))
+            {
+                deviceDict.Clear();
+                revDeviceDict.Clear();
+            }
         }
 
         public OutputDevice AllocateController(OutContType contType)
@@ -181,8 +185,9 @@ namespace DS4Windows
         {
             contType = contType.Normalize();
             ControlService.StartupDiag($"OutputSlotManager.DeferredPlugin enter inIdx={inIdx} contType={contType} outputNull={outputDevice == null}");
-            // releases ReaderWriterLockSlim when locker goes out of scope
-            using WriteLocker locker = new WriteLocker(queueLocker);
+            OutSlotDevice assignedSlot = null;
+            using (WriteLocker locker = new WriteLocker(queueLocker))
+            {
             //queuedTasks++;
             //Action tempAction = new Action(() =>
             {
@@ -268,20 +273,32 @@ namespace DS4Windows
                         outdevs[inIdx] = outputDevice;
                         outputSlots[slot].CurrentInputBound = OutSlotDevice.InputBound.Bound;
                     }
-                    SlotAssigned?.Invoke(this, slot, outputSlots[slot]);
                     ControlService.StartupDiag($"OutputSlotManager.DeferredPlugin assigned slot={slot + 1} inIdx={inIdx} type={contType}");
                     // A pre-Connect FindOpenSlot result is only a hint. Return
                     // the exact slot committed while this write lock is held.
-                    return outputSlots[slot];
+                    assignedSlot = outputSlots[slot];
                 }
                 else
                 {
                     ControlService.StartupDiag($"OutputSlotManager.DeferredPlugin no empty slot inIdx={inIdx} type={contType}");
                 }
             };
+            }
+
+            if (assignedSlot != null)
+            {
+                try
+                {
+                    NotifySlotAssignedSafe(assignedSlot.Index, assignedSlot);
+                }
+                catch (Exception error)
+                {
+                    ControlService.StartupDiag($"OutputSlotManager.SlotAssigned observer failed slot={assignedSlot.Index + 1}: {error}");
+                }
+            }
 
             //queuedTasks--;
-            return null;
+            return assignedSlot;
         }
 
         public void DeferredRemoval(OutputDevice outputDevice, int inIdx,
@@ -289,13 +306,19 @@ namespace DS4Windows
         {
             _ = immediate;
             ControlService.StartupDiag($"OutputSlotManager.DeferredRemoval enter inIdx={inIdx} outputNull={outputDevice == null}");
-
-            // releases ReaderWriterLockSlim when locker goes out of scope
-            using WriteLocker locker = new WriteLocker(queueLocker);
-            //queuedTasks++;
-
+            int removedSlot = -1;
+            OutSlotDevice removedSlotDevice = null;
+            OutContType removedType = OutContType.None;
+            using (WriteLocker locker = new WriteLocker(queueLocker))
             {
-                if (revDeviceDict.TryGetValue(outputDevice, out int slot))
+                //queuedTasks++;
+                if (outputDevice != null &&
+                    revDeviceDict.TryGetValue(outputDevice, out int slot) &&
+                    (uint)slot < outputSlots.Length &&
+                    ReferenceEquals(outputSlots[slot].OutputDevice, outputDevice) &&
+                    ReferenceEquals(outputDevices[slot], outputDevice) &&
+                    deviceDict.TryGetValue(slot, out OutputDevice registered) &&
+                    ReferenceEquals(registered, outputDevice))
                 {
                     ControlService.StartupDiag($"OutputSlotManager.DeferredRemoval found slot={slot + 1} type={outputDevice.GetDeviceType()}");
                     //int slot = revDeviceDict[outputDevice];
@@ -312,16 +335,16 @@ namespace DS4Windows
                     deviceDict.Remove(slot);
                     revDeviceDict.Remove(outputDevice);
 
-                    if (inIdx != -1)
+                    if (outdevs != null && (uint)inIdx < outdevs.Length &&
+                        ReferenceEquals(outdevs[inIdx], outputDevice))
                     {
                         outdevs[inIdx] = null;
                     }
 
-                    OutContType removedType = outputSlots[slot].CurrentType;
-                    outputSlots[slot].DetachDevice();
-                    SlotUnassigned?.Invoke(this, slot, outputSlots[slot]);
-                    AppLogger.LogToGui($"Unplugging virtual {removedType.ToDisplayName()} Controller from output slot #{slot + 1}",false);
-                    ControlService.StartupDiag($"OutputSlotManager.DeferredRemoval unassigned slot={slot + 1}");
+                    removedType = outputSlots[slot].CurrentType;
+                    removedSlot = slot;
+                    removedSlotDevice = outputSlots[slot];
+                    removedSlotDevice.DetachDevice();
 
                     //if (!immediate)
                     //{
@@ -332,13 +355,24 @@ namespace DS4Windows
                 {
                     ControlService.StartupDiag("OutputSlotManager.DeferredRemoval output not found in reverse map");
                 }
-            };
+            }
+
+            // UI observers can query the slot manager or dispatch work back to
+            // the service. Never call them under the slot-map writer lock.
+            if (removedSlot >= 0)
+            {
+                NotifySlotUnassignedSafe(removedSlot, removedSlotDevice);
+
+                AppLogger.LogToGui($"Unplugging virtual {removedType.ToDisplayName()} Controller from output slot #{removedSlot + 1}", false);
+                ControlService.StartupDiag($"OutputSlotManager.DeferredRemoval unassigned slot={removedSlot + 1}");
+            }
 
             //queuedTasks--;
         }
 
         public OutSlotDevice FindOpenSlot()
         {
+            using ReadLocker locker = new ReadLocker(queueLocker);
             OutSlotDevice temp = null;
             for (int i = 0; i < outputSlots.Length; i++)
             {
@@ -357,11 +391,12 @@ namespace DS4Windows
         public bool SlotAvailable(int slotNum)
         {
             bool result;
-            if (slotNum < 0 && slotNum > lastSlotIndex)
+            if (slotNum < 0 || slotNum > lastSlotIndex)
             {
                 throw new ArgumentOutOfRangeException("Invalid slot number");
             }
 
+            using ReadLocker locker = new ReadLocker(queueLocker);
             //slotNum -= 1;
             result = outputSlots[slotNum].CurrentAttachedStatus == OutSlotDevice.AttachedStatus.UnAttached;
             return result;
@@ -370,11 +405,12 @@ namespace DS4Windows
         public OutSlotDevice GetOutSlotDevice(int slotNum)
         {
             OutSlotDevice temp;
-            if (slotNum < 0 && slotNum > lastSlotIndex)
+            if (slotNum < 0 || slotNum > lastSlotIndex)
             {
                 throw new ArgumentOutOfRangeException("Invalid slot number");
             }
 
+            using ReadLocker locker = new ReadLocker(queueLocker);
             //slotNum -= 1;
             temp = outputSlots[slotNum];
             return temp;
@@ -383,6 +419,7 @@ namespace DS4Windows
         public OutSlotDevice GetOutSlotDevice(OutputDevice outputDevice)
         {
             OutSlotDevice temp = null;
+            using ReadLocker locker = new ReadLocker(queueLocker);
             if (outputDevice != null &&
                 revDeviceDict.TryGetValue(outputDevice, out int slotNum))
             {
@@ -395,6 +432,7 @@ namespace DS4Windows
         public OutSlotDevice FindExistUnboundSlotType(OutContType contType)
         {
             OutSlotDevice temp = null;
+            using ReadLocker locker = new ReadLocker(queueLocker);
             string devtype = contType.ToString();
             for (int i = 0; i < outputSlots.Length; i++)
             {
@@ -457,17 +495,20 @@ namespace DS4Windows
             OutputDevice expected, int inputIndex)
         {
             if (candidate == null || expected is not ViiperOutDevice viiper) return false;
-            using WriteLocker locker = new WriteLocker(queueLocker);
-            if (!IsExactAttachedSlotNoLock(candidate, expected) ||
-                candidate.CurrentInputBound != OutSlotDevice.InputBound.Unbound ||
-                viiper.CanReuseForPhysicalController(inputIndex)) return false;
-            expected.RemoveFeedbacks();
-            expected.Disconnect();
-            outputDevices[candidate.Index] = null;
-            deviceDict.Remove(candidate.Index);
-            revDeviceDict.Remove(expected);
-            candidate.DetachDevice();
-            SlotUnassigned?.Invoke(this, candidate.Index, candidate);
+            int slot = candidate.Index;
+            using (WriteLocker locker = new WriteLocker(queueLocker))
+            {
+                if (!IsExactAttachedSlotNoLock(candidate, expected) ||
+                    candidate.CurrentInputBound != OutSlotDevice.InputBound.Unbound ||
+                    viiper.CanReuseForPhysicalController(inputIndex)) return false;
+                expected.RemoveFeedbacks();
+                expected.Disconnect();
+                outputDevices[slot] = null;
+                deviceDict.Remove(slot);
+                revDeviceDict.Remove(expected);
+                candidate.DetachDevice();
+            }
+            NotifySlotUnassignedSafe(slot, candidate);
             return true;
         }
 
@@ -546,20 +587,44 @@ namespace DS4Windows
 
         internal void RetireHeldOutput(OutputDevice output, OutputDevice[] bound, int index)
         {
-            using WriteLocker locker = new WriteLocker(queueLocker);
-            if ((uint)index >= bound.Length || bound[index] != null ||
-                !revDeviceDict.TryGetValue(output, out int slot) ||
-                !IsExactAttachedSlotNoLock(outputSlots[slot], output) || outputSlots[slot].InputIndex != index)
-                throw new InvalidOperationException("The retained output no longer has its exact reservation.");
-            // Keep the exact manager record until Disconnect succeeds.
-            // A failure remains retryable at Stop.
-            output.RemoveFeedbacks();
-            output.Disconnect();
-            outputDevices[slot] = null;
-            deviceDict.Remove(slot);
-            revDeviceDict.Remove(output);
-            outputSlots[slot].DetachDevice();
-            SlotUnassigned?.Invoke(this, slot, outputSlots[slot]);
+            int slot;
+            OutSlotDevice slotDevice;
+            using (WriteLocker locker = new WriteLocker(queueLocker))
+            {
+                if ((uint)index >= bound.Length || bound[index] != null ||
+                    !revDeviceDict.TryGetValue(output, out slot) ||
+                    (uint)slot >= outputSlots.Length ||
+                    !IsExactAttachedSlotNoLock(outputSlots[slot], output) || outputSlots[slot].InputIndex != index)
+                    throw new InvalidOperationException("The retained output no longer has its exact reservation.");
+                // Keep the exact manager record until Disconnect succeeds.
+                // A failure remains retryable at Stop.
+                output.RemoveFeedbacks();
+                output.Disconnect();
+                outputDevices[slot] = null;
+                deviceDict.Remove(slot);
+                revDeviceDict.Remove(output);
+                slotDevice = outputSlots[slot];
+                slotDevice.DetachDevice();
+            }
+            NotifySlotUnassignedSafe(slot, slotDevice);
+        }
+
+        private void NotifySlotAssignedSafe(int slot, OutSlotDevice slotDevice)
+        {
+            try { SlotAssigned?.Invoke(this, slot, slotDevice); }
+            catch (Exception error)
+            {
+                ControlService.StartupDiag($"OutputSlotManager.SlotAssigned observer failed slot={slot + 1}: {error}");
+            }
+        }
+
+        private void NotifySlotUnassignedSafe(int slot, OutSlotDevice slotDevice)
+        {
+            try { SlotUnassigned?.Invoke(this, slot, slotDevice); }
+            catch (Exception error)
+            {
+                ControlService.StartupDiag($"OutputSlotManager.SlotUnassigned observer failed slot={slot + 1}: {error}");
+            }
         }
 
         private bool IsExactAttachedSlotNoLock(OutSlotDevice candidate, OutputDevice output)
@@ -579,32 +644,42 @@ namespace DS4Windows
         public void UnplugRemainingControllers(bool immediate=false)
         {
             _ = immediate;
-
-            // releases ReaderWriterLockSlim when locker goes out of scope
-            using WriteLocker locker = new WriteLocker(queueLocker);
-            //queuedTasks++;
+            var unassignedSlots = new List<(int Slot, OutSlotDevice Device)>();
+            try
             {
-                int slotIdx = 0;
-                foreach (OutSlotDevice device in outputSlots)
+                using (WriteLocker locker = new WriteLocker(queueLocker))
                 {
-                    if (device.OutputDevice != null)
+                    //queuedTasks++;
+                    int slotIdx = 0;
+                    foreach (OutSlotDevice device in outputSlots)
                     {
-                        device.OutputDevice.Disconnect();
+                        if (device.OutputDevice != null)
+                        {
+                            OutputDevice output = device.OutputDevice;
+                            output.Disconnect();
 
-                        outputDevices[slotIdx] = null;
-                        deviceDict.Remove(slotIdx);
-                        revDeviceDict.Remove(device.OutputDevice);
-                        device.DetachDevice();
-                        SlotUnassigned?.Invoke(this, slotIdx, outputSlots[slotIdx]);
-                        //if (!immediate)
-                        //{
-                        //    Task.Delay(DELAY_TIME).Wait();
-                        //}
+                            outputDevices[slotIdx] = null;
+                            deviceDict.Remove(slotIdx);
+                            revDeviceDict.Remove(output);
+                            device.DetachDevice();
+                            unassignedSlots.Add((slotIdx, device));
+                            //if (!immediate)
+                            //{
+                            //    Task.Delay(DELAY_TIME).Wait();
+                            //}
+                        }
+
+                        slotIdx++;
                     }
-
-                    slotIdx++;
                 }
-            };
+            }
+            finally
+            {
+                // A failed slot must not prevent observers from seeing earlier
+                // slots that were already disconnected and committed.
+                foreach ((int slot, OutSlotDevice device) in unassignedSlots)
+                    NotifySlotUnassignedSafe(slot, device);
+            }
 
             //queuedTasks--;
         }
