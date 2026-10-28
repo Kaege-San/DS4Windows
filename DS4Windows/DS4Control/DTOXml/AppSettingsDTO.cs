@@ -109,6 +109,16 @@ namespace DS4WinWPF.DS4Control.DTOXml
         [XmlIgnore]
         public bool ReclaimSteamInput { get; private set; }
 
+        [XmlElement("TreatDualSenseAsEdge")]
+        public string TreatDualSenseAsEdgeString
+        {
+            get => TreatDualSenseAsEdge.ToString();
+            set => TreatDualSenseAsEdge = XmlDataUtilities.StrToBool(value);
+        }
+
+        [XmlIgnore]
+        public bool TreatDualSenseAsEdge { get; private set; }
+
         [XmlIgnore]
         public bool StartMinimized { get; private set; }
         [XmlElement("startMinimized")]
@@ -906,6 +916,7 @@ namespace DS4WinWPF.DS4Control.DTOXml
         {
             UseExclusiveMode = source.useExclusiveMode;
             ReclaimSteamInput = source.reclaimSteamInput;
+            TreatDualSenseAsEdge = source.treatDualSenseAsEdge;
             StartMinimized = source.startMinimized;
             MinimizeToTaskbar = source.minToTaskbar;
             ProcessPriority = source.processPriority;
@@ -1018,6 +1029,7 @@ namespace DS4WinWPF.DS4Control.DTOXml
         {
             destination.useExclusiveMode = UseExclusiveMode;
             destination.reclaimSteamInput = ReclaimSteamInput;
+            destination.treatDualSenseAsEdge = TreatDualSenseAsEdge;
             destination.startMinimized = StartMinimized;
             destination.minToTaskbar = MinimizeToTaskbar;
             destination.processPriority = ProcessPriority;

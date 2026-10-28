@@ -132,7 +132,10 @@ namespace DS4WinWPF.DS4Forms
             picBoxHover2.Visibility = Visibility.Hidden;
 
             bool physicalControllerIsDualSenseEdge =
-                physicalController?.HidDevice?.Attributes?.ProductId == 0x0DF2;
+                (physicalController as DS4Windows.InputDevices.DualSenseDevice)?.SubType ==
+                    DS4Windows.InputDevices.DualSenseDevice.DeviceSubType.DSEdge ||
+                DS4Windows.InputDevices.DualSenseDevice.IsEdgeProductId(
+                    physicalController?.HidDevice?.Attributes?.ProductId);
             ControllerDiagramKind defaultDiagram = physicalControllerIsDualSenseEdge
                 ? ControllerDiagramKind.DualSenseEdge
                 : physicalController?.DeviceType switch

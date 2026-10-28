@@ -4736,10 +4736,23 @@ namespace DS4Windows.InputDevices
         {
             subType = DeviceSubType.DualSense;
             if (hidDevice.Attributes.VendorId == DS4Devices.SONY_VID &&
-                hidDevice.Attributes.ProductId == 0x0DF2)
+                IsEdgeProductId(hidDevice.Attributes.ProductId))
             {
                 subType = DeviceSubType.DSEdge;
             }
+        }
+
+        /// <summary>
+        /// True for the DualSense Edge product ID, or for the standard
+        /// DualSense product ID when the user has asked for DualSense
+        /// controllers to be treated as Edge (Settings > General). The Edge
+        /// Fn/paddle bits live in the same input report byte on both, so a
+        /// standard DualSense simply never sets them.
+        /// </summary>
+        public static bool IsEdgeProductId(int? productId)
+        {
+            return productId == 0x0DF2 ||
+                (productId == 0x0CE6 && Global.TreatDualSenseAsEdge);
         }
 
         public static ConnectionType DetermineConnectionType(HidDevice hidDevice)

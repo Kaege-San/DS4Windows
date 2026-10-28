@@ -2493,6 +2493,12 @@ Suspend support not enabled.", true);
             StartStopBtn.IsEnabled = true;
         }
 
+        private void TreatDualSenseAsEdgeCk_Click(object sender, RoutedEventArgs e)
+        {
+            Global.TreatDualSenseAsEdge = treatDualSenseAsEdgeCk.IsChecked == true;
+            Global.Save();
+        }
+
         private void ReclaimSteamInputCk_Click(object sender, RoutedEventArgs e)
         {
             if (PortableLabContext.IsActive) return;

@@ -50,6 +50,12 @@ namespace DS4WinWPF.DS4Forms.ViewModels
             set => DS4Windows.Global.ReclaimSteamInput = value;
         }
 
+        public bool TreatDualSenseAsEdge
+        {
+            get => DS4Windows.Global.TreatDualSenseAsEdge;
+            set => DS4Windows.Global.TreatDualSenseAsEdge = value;
+        }
+
         public bool SwipeTouchSwitchProfile { get => DS4Windows.Global.SwipeProfiles;
             set => DS4Windows.Global.SwipeProfiles = value; }
 

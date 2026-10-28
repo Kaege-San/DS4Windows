@@ -609,6 +609,11 @@
                               Click="ReclaimSteamInputCk_Click"
                               ToolTip="Cloaks the physical controller with HidHide, then safely restarts only its HID collection so Steam releases any handle it opened first. The virtual controller remains available to games."
                               Style="{StaticResource BridgeDescribedCheckBoxStyle}" />
+                        <CheckBox x:Name="treatDualSenseAsEdgeCk" Content="Treat DualSense controllers as DualSense Edge (expose Fn and back paddles)"
+                              Margin="{StaticResource spaceMargin}" IsChecked="{Binding TreatDualSenseAsEdge}"
+                              Click="TreatDualSenseAsEdgeCk_Click"
+                              ToolTip="Use when a DualSense Edge reports the standard DualSense USB product ID (054C:0CE6). Enables mapping of FnL, FnR and both back paddles for every connected DualSense. Harmless on a standard DualSense: those bits are always off. Reconnect the controller (or Stop/Start) after changing this."
+                              Style="{StaticResource BridgeDescribedCheckBoxStyle}" />
                         <StackPanel Orientation="Horizontal" Margin="{StaticResource spaceMargin}">
                             <CheckBox x:Name="swipeTouchCk" Content="{lex:Loc SwipeTouchpadToSwitchProfiles}" VerticalAlignment="Center"
                                   IsChecked="{Binding SwipeTouchSwitchProfile}"

@@ -350,8 +350,8 @@ namespace DS4WinWPF.DS4Forms.ViewModels
                         "DualShock 4 microphone input comes from a headset connected to the controller's 3.5 mm jack."),
                 InputDeviceType.DualSense => new ControllerUiCapabilities(
                     deviceType,
-                    productId == 0x0DF2 ? "DualSense Edge" : "DualSense",
-                    productId == 0x0DF2
+                    DualSenseDevice.IsEdgeProductId(productId) ? "DualSense Edge" : "DualSense",
+                    DualSenseDevice.IsEdgeProductId(productId)
                         ? "DualSense Edge Controller.png"
                         : "DualSense Controller.png",
                     isPlayStationController: true,
