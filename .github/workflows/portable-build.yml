@@ -1,0 +1,47 @@
+name: Portable Build (fast)
+
+# Minimal variant of ci-build.yml: compile, package the portable ZIP, upload.
+# Skips the installer/MSI lifecycle tests so a code change can be tried
+# quickly. Trigger it manually from the Actions tab.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  portable:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Compute version
+        shell: bash
+        run: echo "VERSION=$(date +%Y.%m.%d)-fast-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+
+      - name: Build x64
+        run: dotnet publish .\DS4Windows\DS4WinWPF.csproj -c Release /p:platform=x64 -r win-x64 --self-contained true -o .\bin\x64\Release\output
+
+      - name: Package portable ZIP
+        run: python .\utils\post-build.py .\bin\x64\Release\output . ${{ env.VERSION }}
+
+      - name: Upload portable ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: DS4Windows_${{ env.VERSION }}_x64_Portable
+          path: .\bin\x64\Release\DS4Windows_${{ env.VERSION }}_x64.zip
+          if-no-files-found: error
